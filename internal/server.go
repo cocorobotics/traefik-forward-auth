@@ -237,20 +237,9 @@ func (s *Server) AuthCallbackHandler() http.HandlerFunc {
 			"user":     user.Email,
 		}).Info("Successfully generated auth cookie, redirecting user.")
 
-		logger.WithField("token", token).Debug("Token")
-
-		// clientSecret := os.Getenv("CLIENT_SECRET")
-		// clientSecret := "vD9FSQLP9AnlufN9rp7MC8zWXfW343JmVBf6ryHlXnkdUK-tUVof7ex6HMTRq2O4"
-		// logger.WithField("clientSecret", clientSecret).Debug("clientSecret")
-		// decryptedToken, err := DecryptToken(token, clientSecret)
-		// if err != nil {
-		// 	logger.WithField("error", err).Error("Error decrypting token")
-		// 	http.Error(w, "Service unavailable", 503)
-		// 	return
-		// }
 		http.SetCookie(w, MakeJWTCookie(r, token))
 
-		logger.WithField("token", token).Debug("token")
+		logger.WithField("token", token).Debug("Token")
 		// Redirect
 		http.Redirect(w, r, redirect, http.StatusTemporaryRedirect)
 	}
