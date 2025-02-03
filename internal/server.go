@@ -112,6 +112,50 @@ func (s *Server) AuthHandler(providerName, rule string) http.HandlerFunc {
 			return
 		}
 
+		jwtCookie, err := r.Cookie("forward_auth_jwt")
+		if err != nil {
+			if err.Error() == "Cookie has expired" {
+				logger.Info("Cookie has expired")
+				s.authRedirect(logger, w, r, p)
+			} else {
+				logger.WithField("error", err).Warn("Invalid JWT")
+				http.Error(w, "Not authorized", 401)
+			}
+			return
+		}
+		claims, err := ValidateToken(jwtCookie.Value)
+		if err != nil {
+			logger.WithField("claims", claims).Debug("Claims")
+			logger.WithField("err", err).Debug("Error")
+			http.Error(w, "Server error", 500)
+			return
+		}
+		rolesClaim, ok := claims["https://cocodelivery.com/schemas/identity/claims/roles"]
+		if !ok {
+			logger.WithField("rolesClaim", rolesClaim).Warn("Roles claims not found")
+			http.Error(w, "Not authorized", 403)
+			return
+		}
+
+		roles, ok := rolesClaim.([]interface{})
+		if !ok {
+			logger.WithField("rolesClaim", rolesClaim).Warn("Roles claim is not in the expected format")
+			http.Error(w, "Not authorized", 403)
+			return
+		}
+
+		var roleList []string
+		for _, role := range roles {
+			if roleStr, ok := role.(string); ok {
+				roleList = append(roleList, roleStr)
+			}
+		}
+		logger.WithField("roleList", roleList).Debug("Role list")
+		if !HasRequiredRole(roleList) {
+			http.Error(w, "Not authorized", 403)
+			return
+		}
+
 		// Valid request
 		logger.Debug("Allowing valid request")
 		w.Header().Set("X-Forwarded-User", email)
@@ -193,6 +237,9 @@ func (s *Server) AuthCallbackHandler() http.HandlerFunc {
 			"user":     user.Email,
 		}).Info("Successfully generated auth cookie, redirecting user.")
 
+		http.SetCookie(w, MakeJWTCookie(r, token))
+
+		logger.WithField("token", token).Debug("Token")
 		// Redirect
 		http.Redirect(w, r, redirect, http.StatusTemporaryRedirect)
 	}

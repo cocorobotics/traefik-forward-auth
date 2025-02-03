@@ -12,8 +12,22 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MicahParks/keyfunc/v3"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/thomseddon/traefik-forward-auth/internal/provider"
+	"gopkg.in/square/go-jose.v2"
 )
+
+var jwks keyfunc.Keyfunc
+
+func init() {
+	jwksURL := []string{"https://coco-production.us.auth0.com/.well-known/jwks.json"}
+	var err error
+	jwks, err = keyfunc.NewDefault(jwksURL)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create JWKS from URL: %s\nError: %s", jwksURL, err))
+	}
+}
 
 // Request Validation
 
@@ -54,6 +68,35 @@ func ValidateCookie(r *http.Request, c *http.Cookie) (string, error) {
 
 	// Looks valid
 	return parts[2], nil
+}
+
+func ValidateToken(tokenString string) (jwt.MapClaims, error) {
+	token, err := jwt.Parse(tokenString, jwks.Keyfunc)
+	if err != nil {
+		return nil, err
+	}
+	if !token.Valid {
+		return nil, errors.New("token is invalid")
+	}
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, errors.New("cannot parse claims")
+	}
+	return claims, nil
+}
+
+// TODO: move to yaml/json configuration file
+func HasRequiredRole(roleList []string) bool {
+	var permittedRoles = map[string]bool{
+		"Admin":   true,
+		"MROTech": true,
+	}
+	for _, role := range roleList {
+		if permittedRoles[role] {
+			return true
+		}
+	}
+	return false
 }
 
 // ValidateEmail checks if the given email address matches either a whitelisted
@@ -176,6 +219,31 @@ func MakeCookie(r *http.Request, email string) *http.Cookie {
 		Secure:   !config.InsecureCookie,
 		Expires:  expires,
 	}
+}
+
+func MakeJWTCookie(r *http.Request, token string) *http.Cookie {
+	expires := cookieExpiry()
+	return &http.Cookie{
+		Name:     "forward_auth_jwt",
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true, // prevent js access to cookie
+		Secure:   !config.InsecureCookie,
+		Expires:  expires,
+	}
+}
+
+func DecryptToken(encryptedToken string, clientSecret string) (string, error) {
+	key := sha256.Sum256([]byte(clientSecret))
+	jwe, err := jose.ParseEncrypted(encryptedToken)
+	if err != nil {
+		return "", err
+	}
+	decryptedBytes, err := jwe.Decrypt(key[:])
+	if err != nil {
+		return "", err
+	}
+	return string(decryptedBytes), nil
 }
 
 // ClearCookie clears the auth cookie

@@ -51,12 +51,7 @@ func (p *OAuthProvider) ConfigCopy(redirectURI string) oauth2.Config {
 // OAuthGetLoginURL provides a base "GetLoginURL" for proiders using OAauth2
 func (p *OAuthProvider) OAuthGetLoginURL(redirectURI, state string) string {
 	config := p.ConfigCopy(redirectURI)
-
-	if p.Resource != "" {
-		return config.AuthCodeURL(state, oauth2.SetAuthURLParam("resource", p.Resource))
-	}
-
-	return config.AuthCodeURL(state)
+	return config.AuthCodeURL(state, oauth2.SetAuthURLParam("audience", "https://coco-production.us.auth0.com/api/v2/"))
 }
 
 // OAuthExchangeCode provides a base "ExchangeCode" for proiders using OAauth2
