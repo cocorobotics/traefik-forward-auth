@@ -1,18 +1,36 @@
+# Build stage
 FROM golang:1.23-alpine as builder
 
-# Setup
-RUN mkdir -p /go/src/github.com/thomseddon/traefik-forward-auth
-WORKDIR /go/src/github.com/thomseddon/traefik-forward-auth
+# Set working directory inside the container
+WORKDIR /app
 
-# Add libraries
+# Install required packages
 RUN apk add --no-cache git
 
-# Copy & build
-ADD . /go/src/github.com/thomseddon/traefik-forward-auth/
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 GO111MODULE=on go build -a -installsuffix nocgo -o /traefik-forward-auth github.com/thomseddon/traefik-forward-auth/cmd
+# Copy go module files first to use caching
+COPY go.mod go.sum ./
 
-# Copy into scratch container
-FROM scratch
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=builder /traefik-forward-auth ./
-ENTRYPOINT ["./traefik-forward-auth"]
+# Download dependencies
+RUN go mod download
+
+# Copy the rest of the application files
+COPY . .
+
+# Build the Go application
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /app/traefik-forward-auth ./cmd
+
+# Final minimal image
+FROM alpine:latest
+
+# Set working directory
+WORKDIR /app
+
+# Copy the built binary from the builder stage
+COPY --from=builder /app/traefik-forward-auth .
+
+# Ensure the binary is executable
+RUN chmod +x /app/traefik-forward-auth
+
+# Set the entrypoint
+ENTRYPOINT ["/app/traefik-forward-auth"]
+

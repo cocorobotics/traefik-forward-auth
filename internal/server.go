@@ -32,7 +32,7 @@ func NewServer() *Server {
 	}
 	
 	// Load templates
-	templateDir := "../templates"
+	templateDir := "templates"
 	templates := map[TemplateName]string{
 		TemplateUnauthorized: filepath.Join(templateDir, "unauthorized.html"),
 		TemplateServerError:  filepath.Join(templateDir, "server_error.html"),
