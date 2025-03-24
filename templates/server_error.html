@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Server Error</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 40px auto;
+        max-width: 650px;
+        padding: 0 20px;
+        line-height: 1.6;
+      }
+      .error-container {
+        background-color: #fff3f3;
+        border: 1px solid #ffa7a7;
+        border-radius: 4px;
+        padding: 20px;
+        margin: 20px 0;
+      }
+      .error-title {
+        color: #d63031;
+        margin-top: 0;
+      }
+      .error-message {
+        color: #2d3436;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="error-container">
+      <h1 class="error-title">Server Error</h1>
+      <div class="error-message">
+        {{if .message}} {{.message}} {{else}} An unexpected error occurred.
+        Please try again later. {{end}}
+      </div>
+    </div>
+  </body>
+</html>

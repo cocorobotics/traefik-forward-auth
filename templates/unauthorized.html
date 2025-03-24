@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Unauthorized Access</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 40px auto;
+        max-width: 650px;
+        padding: 0 20px;
+        line-height: 1.6;
+      }
+      .error-container {
+        background-color: #fff3f3;
+        border: 1px solid #ffa7a7;
+        border-radius: 4px;
+        padding: 20px;
+        margin: 20px 0;
+      }
+      .error-title {
+        color: #d63031;
+        margin-top: 0;
+      }
+      .error-message {
+        color: #2d3436;
+      }
+      .error-details {
+        color: #636e72;
+        font-size: 0.9em;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="error-container">
+      <h1 class="error-title">Access Denied</h1>
+      <div class="error-message">
+        {{if .message}} {{.message}} {{else}} You are not authorized to access
+        this resource. {{end}}
+      </div>
+      {{if .error}}
+      <div class="error-details">Error details: {{.error}}</div>
+      {{end}} {{if .roles}}
+      <div class="error-details">
+        Available roles: {{range .roles}}{{.}} {{end}}
+      </div>
+      {{end}}
+    </div>
+  </body>
+</html>
