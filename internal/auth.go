@@ -228,6 +228,7 @@ func MakeJWTCookie(r *http.Request, token string) *http.Cookie {
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true, // prevent js access to cookie
+		Domain:   cookieDomain(r),
 		Secure:   !config.InsecureCookie,
 		Expires:  expires,
 	}

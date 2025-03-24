@@ -299,9 +299,13 @@ func (s *Server) AuthCallbackHandler() http.HandlerFunc {
 			"provider": providerName,
 			"redirect": redirect,
 			"user":     user.Email,
-		}).Info("Successfully generated auth cookie, redirecting user.")
+		}).Info("Successfully generated auth cookie.")
 
 		http.SetCookie(w, MakeJWTCookie(r, token))
+		logger.WithFields(logrus.Fields{
+			"token": token,
+			"user":  user.Email,
+		}).Info("Successfully generated JWT cookie, redirecting user.")
 
 		logger.WithField("token", token).Debug("Token")
 		// Redirect
