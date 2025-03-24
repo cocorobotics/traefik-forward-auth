@@ -4,26 +4,49 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
-	"os"
+	"path/filepath"
 
 	"github.com/sirupsen/logrus"
 	"github.com/thomseddon/traefik-forward-auth/internal/provider"
 	muxhttp "github.com/traefik/traefik/v2/pkg/muxer/http"
 )
 
+// Add near the top of the file after package declaration
+type TemplateName string
+
+const (
+	TemplateUnauthorized TemplateName = "unauthorized"
+	TemplateServerError  TemplateName = "server_error"
+)
+
 // Server contains muxer and handler methods
 type Server struct {
-	muxer *muxhttp.Muxer
-	unauthorizedTemplate string
-	serverErrorTemplate  string
+	muxer     *muxhttp.Muxer
+	templates map[TemplateName]*template.Template
 }
 
 // NewServer creates a new server object and builds muxer
 func NewServer() *Server {
 	s := &Server{
-		unauthorizedTemplate: "../templates/unauthorized.html",
-		serverErrorTemplate:  "../templates/server_error.html",
+		templates: make(map[TemplateName]*template.Template),
 	}
+	
+	// Load templates
+	templateDir := "../templates"
+	templates := map[TemplateName]string{
+		TemplateUnauthorized: filepath.Join(templateDir, "unauthorized.html"),
+		TemplateServerError:  filepath.Join(templateDir, "server_error.html"),
+	}
+	
+	// Parse templates
+	for name, path := range templates {
+		tmpl, err := template.ParseFiles(path)
+		if err != nil {
+			log.Fatalf("Failed to parse template %s: %v", path, err)
+		}
+		s.templates[name] = tmpl
+	}
+	
 	s.buildRoutes()
 	return s
 }
@@ -106,7 +129,7 @@ func (s *Server) AuthHandler(providerName, rule string) http.HandlerFunc {
 				s.authRedirect(logger, w, r, p)
 			} else {
 				logger.WithField("error", err).Warn("Invalid cookie")
-				s.renderErrorPage(w, 401, s.unauthorizedTemplate, map[string]interface{}{
+				s.renderErrorPage(w, 401, TemplateUnauthorized, map[string]interface{}{
 					"message": "Invalid authentication cookie",
 					"error":   err.Error(),
 				})
@@ -118,7 +141,7 @@ func (s *Server) AuthHandler(providerName, rule string) http.HandlerFunc {
 		valid := ValidateEmail(email, rule)
 		if !valid {
 			logger.WithField("email", email).Warn("Invalid email")
-			s.renderErrorPage(w, 401, s.unauthorizedTemplate, map[string]interface{}{
+			s.renderErrorPage(w, 401, TemplateUnauthorized, map[string]interface{}{
 				"message": "Invalid email address",
 				"email":   email,
 			})
@@ -132,7 +155,7 @@ func (s *Server) AuthHandler(providerName, rule string) http.HandlerFunc {
 				s.authRedirect(logger, w, r, p)
 			} else {
 				logger.WithField("error", err).Warn("Invalid JWT")
-				s.renderErrorPage(w, 401, s.unauthorizedTemplate, map[string]interface{}{
+				s.renderErrorPage(w, 401, TemplateUnauthorized, map[string]interface{}{
 					"message": "Invalid JWT",
 				})
 			}
@@ -142,7 +165,7 @@ func (s *Server) AuthHandler(providerName, rule string) http.HandlerFunc {
 		if err != nil {
 			logger.WithField("claims", claims).Debug("Claims")
 			logger.WithField("err", err).Debug("Error")
-			s.renderErrorPage(w, 500, s.serverErrorTemplate, map[string]interface{}{
+			s.renderErrorPage(w, 500, TemplateServerError, map[string]interface{}{
 				"message": "An internal server error occurred",
 			})
 			return
@@ -150,7 +173,7 @@ func (s *Server) AuthHandler(providerName, rule string) http.HandlerFunc {
 		rolesClaim, ok := claims["https://cocodelivery.com/schemas/identity/claims/roles"]
 		if !ok {
 			logger.WithField("rolesClaim", rolesClaim).Warn("Roles claims not found")
-			s.renderErrorPage(w, 403, s.unauthorizedTemplate, map[string]interface{}{
+			s.renderErrorPage(w, 403, TemplateUnauthorized, map[string]interface{}{
 				"message": "Roles claims not found",
 			})
 			return
@@ -159,7 +182,7 @@ func (s *Server) AuthHandler(providerName, rule string) http.HandlerFunc {
 		roles, ok := rolesClaim.([]interface{})
 		if !ok {
 			logger.WithField("rolesClaim", rolesClaim).Warn("Roles claim is not in the expected format")
-			s.renderErrorPage(w, 403, s.unauthorizedTemplate, map[string]interface{}{
+			s.renderErrorPage(w, 403, TemplateUnauthorized, map[string]interface{}{
 				"message": "Roles claim is not in the expected format",
 			})
 			return
@@ -173,7 +196,7 @@ func (s *Server) AuthHandler(providerName, rule string) http.HandlerFunc {
 		}
 		logger.WithField("roleList", roleList).Debug("Role list")
 		if !HasRequiredRole(roleList) {
-			s.renderErrorPage(w, 403, s.unauthorizedTemplate, map[string]interface{}{
+			s.renderErrorPage(w, 403, TemplateUnauthorized, map[string]interface{}{
 				"message": "You don't have the required role to access this resource",
 				"roles":   roleList,
 			})
@@ -199,7 +222,7 @@ func (s *Server) AuthCallbackHandler() http.HandlerFunc {
 			logger.WithFields(logrus.Fields{
 				"error": err,
 			}).Warn("Error validating state")
-			s.renderErrorPage(w, 401, s.unauthorizedTemplate, map[string]interface{}{
+			s.renderErrorPage(w, 401, TemplateUnauthorized, map[string]interface{}{
 				"message": "Invalid state parameter",
 				"error":   err.Error(),
 			})
@@ -210,7 +233,7 @@ func (s *Server) AuthCallbackHandler() http.HandlerFunc {
 		c, err := FindCSRFCookie(r, state)
 		if err != nil {
 			logger.Info("Missing csrf cookie")
-			s.renderErrorPage(w, 401, s.unauthorizedTemplate, map[string]interface{}{
+			s.renderErrorPage(w, 401, TemplateUnauthorized, map[string]interface{}{
 				"message": "Missing CSRF cookie",
 			})
 			return
@@ -223,7 +246,7 @@ func (s *Server) AuthCallbackHandler() http.HandlerFunc {
 				"error":       err,
 				"csrf_cookie": c,
 			}).Warn("Error validating csrf cookie")
-			s.renderErrorPage(w, 401, s.unauthorizedTemplate, map[string]interface{}{
+			s.renderErrorPage(w, 401, TemplateUnauthorized, map[string]interface{}{
 				"message": "Invalid CSRF cookie",
 				"error":   err.Error(),
 			})
@@ -238,7 +261,7 @@ func (s *Server) AuthCallbackHandler() http.HandlerFunc {
 				"csrf_cookie": c,
 				"provider":    providerName,
 			}).Warn("Invalid provider in csrf cookie")
-			s.renderErrorPage(w, 401, s.unauthorizedTemplate, map[string]interface{}{
+			s.renderErrorPage(w, 401, TemplateUnauthorized, map[string]interface{}{
 				"message": "Invalid authentication provider",
 				"error":   err.Error(),
 			})
@@ -252,7 +275,7 @@ func (s *Server) AuthCallbackHandler() http.HandlerFunc {
 		token, err := p.ExchangeCode(redirectUri(r), r.URL.Query().Get("code"))
 		if err != nil {
 			logger.WithField("error", err).Error("Code exchange failed with provider")
-			s.renderErrorPage(w, 503, s.serverErrorTemplate, map[string]interface{}{
+			s.renderErrorPage(w, 503, TemplateServerError, map[string]interface{}{
 				"message": "Failed to authenticate with provider",
 				"error":   err.Error(),
 			})
@@ -263,7 +286,7 @@ func (s *Server) AuthCallbackHandler() http.HandlerFunc {
 		user, err := p.GetUser(token)
 		if err != nil {
 			logger.WithField("error", err).Error("Error getting user")
-			s.renderErrorPage(w, 503, s.serverErrorTemplate, map[string]interface{}{
+			s.renderErrorPage(w, 503, TemplateServerError, map[string]interface{}{
 				"message": "Failed to get user information",
 				"error":   err.Error(),
 			})
@@ -298,7 +321,7 @@ func (s *Server) LogoutHandler() http.HandlerFunc {
 		if config.LogoutRedirect != "" {
 			http.Redirect(w, r, config.LogoutRedirect, http.StatusTemporaryRedirect)
 		} else {
-			s.renderErrorPage(w, 401, s.unauthorizedTemplate, map[string]interface{}{
+			s.renderErrorPage(w, 401, TemplateUnauthorized, map[string]interface{}{
 				"message": "You have been logged out",
 			})
 		}
@@ -310,7 +333,10 @@ func (s *Server) authRedirect(logger *logrus.Entry, w http.ResponseWriter, r *ht
 	err, nonce := Nonce()
 	if err != nil {
 		logger.WithField("error", err).Error("Error generating nonce")
-		http.Error(w, "Service unavailable", 503)
+		s.renderErrorPage(w, 503, TemplateServerError, map[string]interface{}{
+			"message": "Service unavailable",
+			"error":   err.Error(),
+		})
 		return
 	}
 
@@ -354,23 +380,27 @@ func (s *Server) logger(r *http.Request, handler, rule, msg string) *logrus.Entr
 	return logger
 }
 
-func (s *Server) renderErrorPage(w http.ResponseWriter, status int, templatePath string, data map[string]interface{}) {
+func (s *Server) renderErrorPage(w http.ResponseWriter, status int, templateName TemplateName, data map[string]interface{}) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	
-	// Read and render template
-	content, err := os.ReadFile(templatePath)
-	if err != nil {
-		// Fallback to plain text if template fails
+	tmpl := s.templates[templateName]
+	if tmpl == nil {
+		log.WithFields(logrus.Fields{
+			"template": templateName,
+			"status":   status,
+		}).Error("Template not found")
 		http.Error(w, "Not authorized", status)
 		return
 	}
 	
-	tmpl, err := template.New("error").Parse(string(content))
-	if err != nil {
+	if err := tmpl.Execute(w, data); err != nil {
+		log.WithFields(logrus.Fields{
+			"template": templateName,
+			"status":   status,
+			"error":    err,
+			"data":     data,
+		}).Error("Template execution failed")
 		http.Error(w, "Not authorized", status)
-		return
 	}
-	
-	tmpl.Execute(w, data)
 }
